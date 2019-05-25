@@ -5,11 +5,23 @@
 # License: GNU GPLv3
 
 # array funcs {{{
-array() { for i; do echo "$i"; done }
+array()
+{
+    for i
+    do
+        echo "$i"
+    done
+}
 
-array_len() { wc -l }
+array_len()
+{
+    wc -l
+}
 
-array_nth() { [ "$1" -ge 0 ] && sed -n $(($1 + 1))p }
+array_nth()
+{
+    [ "$1" -ge 0 ] && sed -n $(($1 + 1))p
+}
 
 array_change() #{{{
 {
@@ -196,6 +208,7 @@ check_connection()
     if connection_test; then
         while true
         do
+            echo
             print_warning "ERROR! Connection not Found."
             print_info "Network Setup"
             _connection_opts=$(array 'Wired Automatic' 'Wireless' 'Skip')
@@ -248,8 +261,7 @@ select_keymap() #{{{
 
         printf "$prompt1"
         read choice
-        if [ $choice -ge 1 -a $choice -le $number_of_options ]
-        then
+        if [ $choice -ge 1 -a $choice -le $number_of_options ]; then
             KEYMAP=$(echo "$keymap_list" | array_nth $((choice - 1)))
             #loadkeys "$KEYMAP"
             echo "Selected: $KEYMAP"
@@ -273,8 +285,7 @@ choose_country()
 
         printf "$prompt1"
         read choice
-        if [ $choice -ge 1 -a $choice -le $number_of_options ]
-        then
+        if [ $choice -ge 1 -a $choice -le $number_of_options ]; then
             country_code="$(echo "$countries_code" | array_nth $((choice - 1)))"
             country_name="$(echo "$countries_name" | array_nth $((choice - 1)))"
             break
@@ -330,7 +341,8 @@ finish() #{{{
 {
     print_title "INSTALL COMPLETED"
     #COPY AUI TO ROOT FOLDER IN THE NEW SYSTEM
-    print_warning "\nA copy of the AUI will be placed in /root directory of your new system"
+    echo
+    print_warning "A copy of the AUI will be placed in /root directory of your new system"
     #cp -R `pwd` ${MOUNTPOINT}/root
     #read_input_text "Reboot system"
     #if [[ $OPTION == y ]]; then
@@ -435,4 +447,4 @@ do
             ;;
     esac
 done
-#}}}
+##}}}

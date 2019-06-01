@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Arch Install Script
-# by jonatasmedeiros
+# by Jonatas Medeiros
 # License: GNU GPLv3
 
 # array funcs {{{
@@ -132,6 +132,12 @@ print_header()
     echo
 }
 
+print_bold()
+{
+    echo "${Bold}$1${Reset}"
+    echo
+}
+
 print_info()
 {
     echo "${BBlue}$1${Reset}"
@@ -249,11 +255,13 @@ check_connection() #{{{
                 esac
             done
             if [ $XPINGS -gt 2 ]; then
+                echo
                 print_warning "Can't establish connection. exiting..."
                 exit 1
             fi
             [ $choice -eq 3 ] && break
         else
+            echo
             print_info "Connected!"
             break
         fi
@@ -262,7 +270,7 @@ check_connection() #{{{
 
 check_trim() #{{{
 {
-    if [ -n $(hdparm -I /dev/sda | grep TRIM ) ]; then
+    if [ -n "$(hdparm -I /dev/sda | grep TRIM)" ]; then
         TRIM=1
         echo
         print_info "Trimming supported!"
@@ -281,6 +289,7 @@ select_keymap() #{{{
         print_header "The KEYMAP variable is specified in the /etc/rc.conf file. It defines what keymap the keyboard is in the virtual consoles. Keytable files are provided by the kbd package."
 
         echo "List of keymaps:"
+        echo
         array_print_indexed "$keymap_list"
         echo
         echo "0) Go back"
@@ -293,6 +302,7 @@ select_keymap() #{{{
             if [ $choice -ge 1 -a $choice -le $number_of_options ]; then
                 KEYMAP=$(echo "$keymap_list" | array_nth $((choice - 1)))
                 loadkeys "$KEYMAP"
+                echo
                 print_info "Selected: $KEYMAP"
                 pause_function
                 break
@@ -313,6 +323,7 @@ configure_mirrorlist() #{{{
         print_header "This option is a guide to selecting and configuring your mirrors, and a listing of current available mirrors."
 
         echo "Select your country:"
+        echo
         array_print_indexed "$countries_name" | column
         echo
         echo "0) Go back"
@@ -341,32 +352,32 @@ configure_mirrorlist() #{{{
     tmpfile=$(mktemp --suffix=-mirrorlist)
 
     # Get latest mirror list and save to tmpfile
-    print_header ":: Downloading latest mirror list ::"
+    print_bold ":: Downloading latest mirror list ::"
     curl -o ${tmpfile} ${url}
     echo
     sed -i 's/^#Server/Server/g' ${tmpfile}
 
     # Backup and replace current mirrorlist file (if new file is non-zero)
     if [ -s ${tmpfile} ]; then
-        mv -i /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.orig &&
-        mv -i ${tmpfile} /etc/pacman.d/mirrorlist &&
-        print_info "Mirrorlist updated"
+        mv /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.orig &&
+        mv ${tmpfile} /etc/pacman.d/mirrorlist &&
+        print_info "Mirrorlist updated."
     else
         print_warning "Unable to update! Could not download list."
     fi
     
     # better repo should go first
-    print_header ":: Downloading rankmirrors package ::"
+    print_bold ":: Downloading rankmirrors package ::"
     pacman --noconfirm --needed -S pacman-contrib
     echo
     cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.tmp
-    print_header ":: Ranking mirrors ::"
+    print_bold ":: Ranking mirrors ::"
     rankmirrors /etc/pacman.d/mirrorlist.tmp > /etc/pacman.d/mirrorlist
     rm /etc/pacman.d/mirrorlist.tmp
     # allow global read access (required for non-root yaourt execution)
     chmod +r /etc/pacman.d/mirrorlist
     echo
-    print_info "Mirror list:"
+    print_bold "Mirror list:"
     cat /etc/pacman.d/mirrorlist
     echo
     pause_function
@@ -392,11 +403,11 @@ finish() #{{{
 print_title "Arch Install Scripts - by Jonatas Medeiros"
 print_header "The AIS are a custom set of shell scripts that provide a tailored Arch installation."
 pause_function
-print_header ":: Checking connection ::"
+print_bold ":: Checking connection ::"
 check_connection
-print_header ":: Checking disk ::"
+print_bold ":: Checking disk ::"
 check_trim
-print_header ":: Updating repositories ::"
+print_bold ":: Updating repositories ::"
 pacman -Sy
 echo
 pause_function
@@ -427,11 +438,11 @@ do
     case "$OPT" in
         1)
             select_keymap
-            checklist=$(array_change "$checklist" 0 "1")
+            [ $choice -ne 0 ] && checklist=$(array_change "$checklist" 0 "1")
             ;;
         2)
             configure_mirrorlist
-            checklist=$(array_change "$checklist" 1 "1")
+            [ $choice -ne 0 ] && checklist=$(array_change "$checklist" 1 "1")
             ;;
         3)
             checklist=$(array_change "$checklist" 2 "1")

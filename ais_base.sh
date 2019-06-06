@@ -40,11 +40,12 @@ print_line()
 
 print_bold()
 {
-    printf "${Bold}$1${Reset}\n\n"
+    printf "${Bold}:: $1${Reset}\n\n"
 }
 
 print_title()
 {
+    clear
     print_line
     printf "  ${Bold}$1${Reset}\n"
     print_line
@@ -65,10 +66,10 @@ wait_key()
     printf "Press any key to continue (q to quit)..."
     continue_key=$(read_key)
     if [ "$continue_key" = "q" ]; then
-        printf "Exiting AIS...\n"
+        printf "\nExiting AIS...\n"
+        umount -R ${mount_point}
         exit 1
     fi
-    clear
     print_title "$title"
 }
 
@@ -135,12 +136,12 @@ setup()
     wait_key
 
     print_bold "Downloading and ranking mirrorlist"
-    execute "curl ${mirror_url} | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}"
+    execute "curl \"${mirror_url}\" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}"
     execute "cat ${mirrorlist}"
     wait_key
 
-    print_bold "Transfering pacman.conf to new system"
-    execute "cp -v /etc/pacman.conf ${mount_point}/etc/pacman.conf"
+    print_bold "Configuring pacman.conf"
+    execute "sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf"
     wait_key
 
     print_bold "Installing base system"

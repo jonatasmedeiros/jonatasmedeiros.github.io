@@ -28,9 +28,9 @@ set_defaults()
 
     host_name="archlinux"
     time_zone="America/Recife"
-    trim_rule="\"ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{queue/rotational}==\"0\", ATTR{queue/scheduler}=\"deadline\""
-    loader_conf="default\tarch\ntimeout\t3\neditor\t0"
-    arch_conf="title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/intel-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=PARTLABEL=arch rw"
+    trim_rule="ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{queue/rotational}==\"0\", ATTR{queue/scheduler}=\"deadline\""
+    loader_conf="default\tarch\ntimeout\t3\neditor\t0\n"
+    arch_conf="title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/amd-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=PARTLABEL=${root_label} rw\n"
 }
 
 print_line()
@@ -70,7 +70,11 @@ wait_key()
     sleep 1
     printf "\n"
     print_line
-    printf "Press any key to continue (q to quit)..."
+    if [ "$1" = "" ]; then
+        printf "Press any key to continue (q to quit)..."
+    else
+        printf "$1"
+    fi
     continue_key=$(read_key)
     if [ "$continue_key" = "q" ]; then
         printf "\nExiting AIS...\n"
@@ -110,6 +114,7 @@ mount_partitions()
     print_bold "Mounting partitions"
     print_command "umount -R ${mountJ_point}"
     umount -R ${mount_point}
+    printf "\n"
 
     print_command "mount -v PARTLABEL=${root_label} ${mount_point}"
     mount -v PARTLABEL=${root_label} ${mount_point}
@@ -195,15 +200,15 @@ create_swap()
     arch_chroot "fallocate -l ${swap_size} /swapfile"
     printf "\n"
 
-    print_command "chmod 600 /swapfile"
+    print_command "(chroot) chmod 600 /swapfile"
     arch_chroot "chmod 600 /swapfile"
     printf "\n"
 
-    print_command "mkswap /swapfile"
+    print_command "(chroot) mkswap /swapfile"
     arch_chroot "mkswap /swapfile"
     printf "\n"
 
-    print_command "swapon /swapfile"
+    print_command "(chroot) swapon /swapfile"
     arch_chroot "swapon /swapfile"
     wait_key
 }
@@ -215,7 +220,10 @@ generate_fstab()
     genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab
     printf "\n"
 
-    #echo -e "# Swap File\n/swapfile\tnone\tswap\tdefaults\t0 0\n" >> /mnt/etc/fstab
+    # /mnt/swapfile -> /swapfile
+    print_command "sed -i \"s/\\${mount_point}//\""
+    sed -i "s/\\${mount_point}//"
+
     print_command "cat ${mount_point}/etc/fstab"
     cat ${mount_point}/etc/fstab
     wait_key
@@ -243,7 +251,7 @@ set_timezone()
 set_clock()
 {
     print_bold "Setting system clock"
-    print_command "hwclock -wu"
+    print_command "(chroot) hwclock -wu"
     arch_chroot "hwclock -wu"
     wait_key
 }
@@ -261,7 +269,7 @@ set_locale()
     cat ${mount_point}/etc/locale.conf
     printf "\n"
 
-    print_command "locale-gen"
+    print_command "(chroot) locale-gen"
     arch_chroot "locale-gen"
     wait_key
 }
@@ -269,7 +277,7 @@ set_locale()
 set_trimming()
 {
     print_bold "Setting trimming"
-    print_command "systemctl enable fstrim.timer"
+    print_command "(chroot) systemctl enable fstrim.timer"
     arch_chroot "systemctl enable fstrim.timer"
     printf "\n"
 
@@ -284,24 +292,30 @@ set_trimming()
 copy_pacmanconf()
 {
     print_bold "Copying pacman.conf"
-    print_command "cp /etc/pacman.conf ${mount_point}/etc/pacman.conf"
-    cp /etc/pacman.conf ${mount_point}/etc/pacman.conf
+    print_command "cp -v /etc/pacman.conf ${mount_point}/etc/pacman.conf"
+    cp -v /etc/pacman.conf ${mount_point}/etc/pacman.conf
     wait_key
 }
 
 set_root_pass()
 {
     print_bold "Setting root password"
-    print_command "passwd"
-    arch_chroot "passwd"
-    #arch_chroot "echo \"root:$root_pass1\" | chpasswd"
+    while true # will exit after passwd return 0 (success)
+    do
+        print_command "(chroot) passwd"
+        arch_chroot "passwd"
+        if [ $? -eq 0 ]; then
+            break
+        fi
+        wait_key "Press any key to retry (q to quit)..."
+    done
     wait_key
 }
 
 config_bootloader()
 {
     print_bold "Configuring bootloader"
-    print_command "bootctl install"
+    print_command "(chroot) bootctl install"
     arch_chroot "bootctl install"
     printf "\n"
 
@@ -317,22 +331,6 @@ config_bootloader()
 
     print_command "cat ${mount_point}/boot/loader/entries/arch.conf"
     cat ${mount_point}/boot/loader/entries/arch.conf
-    wait_key
-}
-
-refresh_keys()
-{
-    print_bold "Refreshing keys"
-    print_command "pacman-key --init"
-    arch_chroot "pacman-key --init"
-    printf "\n"
-
-    print_command "pacman-key --populate archlinux"
-    arch_chroot "pacman-key --populate archlinux"
-    printf "\n"
-
-    print_command "pacman-key --refresh-keys"
-    arch_chroot "pacman-key --refresh-keys"
     wait_key
 }
 
@@ -354,9 +352,10 @@ setup()
     set_locale
     set_trimming
     copy_pacmanconf
-    set_root_pass
     config_bootloader
-    refresh_keys
+    set_root_pass
+
+    print_bold "Installation finished."
 }
 
 set_defaults

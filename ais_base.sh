@@ -67,6 +67,7 @@ read_key()
 
 wait_key()
 {
+    sleep 1
     printf "\n"
     print_line
     printf "Press any key to continue (q to quit)..."
@@ -107,6 +108,9 @@ format_partitions()
 mount_partitions()
 {
     print_bold "Mounting partitions"
+    print_command "umount -R ${mountJ_point}"
+    umount -R ${mount_point}
+
     print_command "mount -v PARTLABEL=${root_label} ${mount_point}"
     mount -v PARTLABEL=${root_label} ${mount_point}
     printf "\n"
@@ -158,6 +162,18 @@ config_mirrorlist()
 
     print_command "cat ${mirrorlist}"
     cat ${mirrorlist}
+    wait_key
+}
+
+clean_esp()
+{
+    print_bold "Cleaning ESP"
+    print_command "rm -v /mnt/boot/vmlinuz-linux"
+    rm -v /mnt/boot/vmlinuz-linux
+    printf "\n"
+
+    print_command "rm -v /mnt/boot/*.img"
+    rm -v /mnt/boot/*.img
     wait_key
 }
 
@@ -328,6 +344,7 @@ setup()
     format_partitions
     mount_partitions
     config_mirrorlist
+    clean_esp
     install_base
     create_swap
     generate_fstab

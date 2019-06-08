@@ -26,7 +26,7 @@ set_defaults()
     base_packages="base base-devel amd-ucode ntfs-3g"
     swap_size="512M"
 
-    host_name=""
+    host_name="archlinux"
     time_zone="America/Recife"
     trim_rule="\"ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{queue/rotational}==\"0\", ATTR{queue/scheduler}=\"deadline\""
     loader_conf="default\tarch\ntimeout\t3\neditor\t0"
@@ -52,6 +52,11 @@ print_title()
     printf "\n"
 }
 
+print_command()
+{
+    printf "${Bold}\$${Reset} ${Cyan}${1}${Reset}\n\n"
+}
+
 read_key()
 {
     stty_old=$(stty -g)
@@ -62,6 +67,7 @@ read_key()
 
 wait_key()
 {
+    printf "\n"
     print_line
     printf "Press any key to continue (q to quit)..."
     continue_key=$(read_key)
@@ -75,138 +81,265 @@ wait_key()
 
 arch_chroot()
 {
-    printf "${Bold}\$ arch-chroot:${Reset} ${Cyan}${1}${Reset}\n\n"
     arch-chroot ${mount_point} sh -c "${1}"
-    printf "\n"
 }
 
-execute()
+sync_time()
 {
-    printf "${Bold}\$${Reset} ${Cyan}${1}${Reset}\n\n"
-    $1
+    print_bold "Syncing time"
+    print_command "timedatectl set-ntp true"
+    timedatectl set-ntp true
+    wait_key
+}
+
+format_partitions()
+{
+    print_bold "Formating partitions"
+    print_command "mkfs.ext4 ${ext4_args} -L ${root_label} /dev/disk/by-partlabel/${root_label}"
+    mkfs.ext4 ${ext4_args} -L ${root_label} /dev/disk/by-partlabel/${root_label}
     printf "\n"
+
+    print_command "mkfs.ext4 ${ext4_args} -L ${home_label} /dev/disk/by-partlabel/${home_label}"
+    mkfs.ext4 ${ext4_args} -L ${home_label} /dev/disk/by-partlabel/${home_label}
+    wait_key
+}
+
+mount_partitions()
+{
+    print_bold "Mounting partitions"
+    print_command "mount -v PARTLABEL=${root_label} ${mount_point}"
+    mount -v PARTLABEL=${root_label} ${mount_point}
+    printf "\n"
+
+    print_command "mkdir -vp ${esp_mp}"
+    mkdir -vp ${esp_mp}
+    printf "\n"
+
+    print_command "mount -v ${esp_part} ${esp_mp}"
+    mount -v ${esp_part} ${esp_mp}
+    printf "\n"
+    #mount -v PARTLABEL=${esp_label} ${esp_mp}
+
+    print_command "mkdir -vp ${home_mp}"
+    mkdir -vp ${home_mp}
+    printf "\n"
+
+    print_command "mount -v PARTLABEL=${home_label} ${home_mp}"
+    mount -v PARTLABEL=${home_label} ${home_mp}
+    printf "\n"
+
+    print_command "mkdir -vp ${win_mp}"
+    mkdir -vp ${win_mp}
+    printf "\n"
+
+    print_command "mount -v ${win_part} ${win_mp}"
+    mount -v ${win_part} ${win_mp}
+    wait_key
+}
+
+config_mirrorlist()
+{
+    print_bold "Config mirrorlist"
+    print_command "pacman -Syy"
+    pacman -Syy
+    printf "\n"
+
+    print_command "pacman --noconfirm --needed -S pacman-contrib"
+    pacman --noconfirm --needed -S pacman-contrib
+    printf "\n"
+
+    print_command "cp -v ${mirrorlist} ${mirrorlist}.backup"
+    cp -v ${mirrorlist} ${mirrorlist}.backup
+    printf "\n"
+
+    print_command "curl \"${mirror_url}\" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}"
+    curl ${mirror_url} | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}
+    printf "\n"
+
+    print_command "cat ${mirrorlist}"
+    cat ${mirrorlist}
+    wait_key
+}
+
+install_base()
+{
+    print_bold "Installing base system"
+    print_command "sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf"
+    sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf
+
+    print_command "pacstrap ${mount_point} ${base_packages}"
+    pacstrap ${mount_point} ${base_packages}
+    wait_key
+}
+
+create_swap()
+{
+    print_bold "Creating swap file"
+    print_command "(chroot) fallocate -l ${swap_size} /swapfile"
+    arch_chroot "fallocate -l ${swap_size} /swapfile"
+    printf "\n"
+
+    print_command "chmod 600 /swapfile"
+    arch_chroot "chmod 600 /swapfile"
+    printf "\n"
+
+    print_command "mkswap /swapfile"
+    arch_chroot "mkswap /swapfile"
+    printf "\n"
+
+    print_command "swapon /swapfile"
+    arch_chroot "swapon /swapfile"
+    wait_key
+}
+
+generate_fstab()
+{
+    print_bold "Generate fstab"
+    print_command "genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab"
+    genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab
+    printf "\n"
+
+    #echo -e "# Swap File\n/swapfile\tnone\tswap\tdefaults\t0 0\n" >> /mnt/etc/fstab
+    print_command "cat ${mount_point}/etc/fstab"
+    cat ${mount_point}/etc/fstab
+    wait_key
+}
+
+set_hostname()
+{
+    print_bold "Setting hostname"
+    print_command "echo $host_name > ${mount_point}/etc/hostname"
+    echo $host_name > ${mount_point}/etc/hostname
+
+    print_command "cat ${mount_point}/etc/hostname"
+    cat ${mount_point}/etc/hostname
+    wait_key
+}
+
+set_timezone()
+{
+    print_bold "Setting time zone"
+    print_command "(chroot) ln -svf /usr/share/zoneinfo/${time_zone} /etc/localtime"
+    arch_chroot "ln -svf /usr/share/zoneinfo/${time_zone} /etc/localtime"
+    wait_key
+}
+
+set_clock()
+{
+    print_bold "Setting system clock"
+    print_command "hwclock -wu"
+    arch_chroot "hwclock -wu"
+    wait_key
+}
+
+set_locale()
+{
+    print_bold "Setting locale"
+    print_command "sed -i 's/^#en_US/en_US/' ${mount_point}/etc/locale.gen"
+    sed -i 's/^#en_US/en_US/' ${mount_point}/etc/locale.gen
+
+    print_command "echo \"LANG=en_US.UTF-8\" > ${mount_point}/etc/locale.conf"
+    echo "LANG=en_US.UTF-8" > ${mount_point}/etc/locale.conf
+
+    print_command "cat ${mount_point}/etc/locale.conf"
+    cat ${mount_point}/etc/locale.conf
+    printf "\n"
+
+    print_command "locale-gen"
+    arch_chroot "locale-gen"
+    wait_key
+}
+
+set_trimming()
+{
+    print_bold "Setting trimming"
+    print_command "systemctl enable fstrim.timer"
+    arch_chroot "systemctl enable fstrim.timer"
+    printf "\n"
+
+    print_command "printf \"${trim_rule}\" > ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
+    printf "${trim_rule}" > ${mount_point}/etc/udev/rules.d/60-schedulers.rules
+
+    print_command "cat ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
+    cat ${mount_point}/etc/udev/rules.d/60-schedulers.rules
+    wait_key
+}
+
+copy_pacmanconf()
+{
+    print_bold "Copying pacman.conf"
+    print_command "cp /etc/pacman.conf ${mount_point}/etc/pacman.conf"
+    cp /etc/pacman.conf ${mount_point}/etc/pacman.conf
+    wait_key
+}
+
+set_root_pass()
+{
+    print_bold "Setting root password"
+    print_command "passwd"
+    arch_chroot "passwd"
+    #arch_chroot "echo \"root:$root_pass1\" | chpasswd"
+    wait_key
+}
+
+config_bootloader()
+{
+    print_bold "Configuring bootloader"
+    print_command "bootctl install"
+    arch_chroot "bootctl install"
+    printf "\n"
+
+    print_command "printf \"${loader_conf}\" > ${mount_point}/boot/loader/loader.conf"
+    printf "${loader_conf}" > ${mount_point}/boot/loader/loader.conf 
+
+    print_command "cat ${mount_point}/boot/loader/loader.conf"
+    cat ${mount_point}/boot/loader/loader.conf
+    printf "\n"
+
+    print_command "printf \"${arch_conf}\" > ${mount_point}/boot/loader/entries/arch.conf"
+    printf "${arch_conf}" > ${mount_point}/boot/loader/entries/arch.conf
+
+    print_command "cat ${mount_point}/boot/loader/entries/arch.conf"
+    cat ${mount_point}/boot/loader/entries/arch.conf
+    wait_key
+}
+
+refresh_keys()
+{
+    print_bold "Refreshing keys"
+    print_command "pacman-key --init"
+    arch_chroot "pacman-key --init"
+    printf "\n"
+
+    print_command "pacman-key --populate archlinux"
+    arch_chroot "pacman-key --populate archlinux"
+    printf "\n"
+
+    print_command "pacman-key --refresh-keys"
+    arch_chroot "pacman-key --refresh-keys"
+    wait_key
 }
 
 setup()
 {
     print_title "$title"
 
-    print_bold "Syncing time"
-    execute "timedatectl set-ntp true"
-    wait_key
-
-    print_bold "Formating root partition"
-    execute "mkfs.ext4 ${ext4_args} -L ${root_label} /dev/disk/by-partlabel/${root_label}"
-    wait_key
-
-    print_bold "Formating home partition"
-    execute "mkfs.ext4 ${ext4_args} -L ${home_label} /dev/disk/by-partlabel/${home_label}"
-    wait_key
-
-    print_bold "Mounting root partition"
-    execute "mount -v PARTLABEL=${root_label} ${mount_point}"
-    wait_key
-
-    print_bold "Mounting boot partition"
-    execute "mkdir -vp ${esp_mp}"
-    #execute "mount -v PARTLABEL=${esp_label} ${esp_mp}"
-    execute "mount -v ${esp_part} ${esp_mp}"
-    wait_key
-
-    print_bold "Mounting home partition"
-    execute "mkdir -vp ${home_mp}"
-    execute "mount -v PARTLABEL=${home_label} ${home_mp}"
-    wait_key
-
-    print_bold "Mounting win partition"
-    execute "mkdir -vp ${win_mp}"
-    execute "mount -v ${win_part} ${win_mp}"
-    wait_key
-
-    print_bold "Updating repositories"
-    execute "pacman -Syy"
-    wait_key
-
-    print_bold "Installing rankmirrors package"
-    execute "pacman --noconfirm --needed -S pacman-contrib"
-    wait_key
-
-    print_bold "Backing up mirrorlist"
-    execute "cp -v ${mirrorlist} ${mirrorlist}.backup"
-    wait_key
-
-    print_bold "Downloading and ranking mirrorlist"
-    execute "curl \"${mirror_url}\" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}"
-    execute "cat ${mirrorlist}"
-    wait_key
-
-    print_bold "Configuring pacman.conf"
-    execute "sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf"
-    wait_key
-
-    print_bold "Installing base system"
-    execute "pacstrap ${mount_point} ${base_packages}"
-    wait_key
-
-    print_bold "Creating swap file"
-    arch_chroot "fallocate -l ${swap_size} /swapfile"
-    arch_chroot "chmod 600 /swapfile"
-    arch_chroot "mkswap /swapfile"
-    arch_chroot "swapon /swapfile"
-    wait_key
-
-    print_bold "Generate fstab"
-    execute "genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab"
-    #echo -e "# Swap File\n/swapfile\tnone\tswap\tdefaults\t0 0\n" >> /mnt/etc/fstab
-    execute "cat ${mount_point}/etc/fstab"
-    wait_key
-
-    print_bold "Setting hostname"
-    execute "echo $host_name > ${mount_point}/etc/hostname"
-    execute "cat ${mount_point}/etc/hostname"
-    wait_key
-
-    print_bold "Setting time zone"
-    arch_chroot "ln -svf /usr/share/zoneinfo/${time_zone} /etc/localtime"
-    wait_key
-
-    print_bold "Setting system clock"
-    arch_chroot "hwclock -wu"
-    wait_key
-
-    print_bold "Setting locale"
-    execute "sed -i 's/^#en_US/en_US/' ${mount_point}/etc/locale.gen"
-    execute "echo \"LANG=en_US.UTF-8\" > ${mount_point}/etc/locale.conf"
-    execute "cat ${mount_point}/etc/locale.conf"
-    arch_chroot "locale-gen"
-    wait_key
-
-    print_bold "Setting trimming"
-    arch_chroot "systemctl enable fstrim.timer"
-    execute "printf \"${trim_rule}\" > ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
-    execute "cat ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
-    wait_key
-
-    print_bold "Copying pacman.conf"
-    execute "cp /etc/pacman.conf ${mount_point}/etc/pacman.conf"
-    wait_key
-
-    print_bold "Setting root password"
-    arch_chroot "passwd"
-    #arch_chroot "echo \"root:$root_pass1\" | chpasswd"
-    wait_key
-
-    print_bold "Configuring bootloader"
-    arch_chroot "bootctl install"
-    execute "printf \"${loader_conf}\" > ${mount_point}/boot/loader/loader.conf" 
-    execute "printf \"${arch_conf}\" > ${mount_point}/boot/loader/entries/arch.conf"
-    wait_key
-
-    print_bold "Refreshing keys"
-    arch_chroot "pacman-key --init"
-    arch_chroot "pacman-key --populate archlinux"
-    arch_chroot "pacman-key --refresh-keys"
-    wait_key
+    sync_time
+    format_partitions
+    mount_partitions
+    config_mirrorlist
+    install_base
+    create_swap
+    generate_fstab
+    set_hostname
+    set_timezone
+    set_clock
+    set_locale
+    set_trimming
+    copy_pacmanconf
+    set_root_pass
+    config_bootloader
+    refresh_keys
 }
 
 set_defaults

@@ -7,27 +7,28 @@ set_defaults()
     Reset=$(tput sgr0)
     Cyan=$(tput setaf 6)
 
-    title="AIS - Archlinux Installation Script - jonatasmedeiros.com/ais.sh"
-    ext4_args="-F -m 0 -T big"
     root_label="arch"
     esp_label="ESP"
     home_label="home"
+
     mount_point="/mnt"
     esp_mp="${mount_point}/boot"
-    esp_part="/dev/sda2"
     home_mp="${mount_point}/home"
-    win_mp="${mount_point}/win"
+    win_mp="${mount_point}/mnt/win"
+
+    esp_part="/dev/sda2"
     win_part="/dev/sda4"
-
-    country_code="BR"
-    mirrorlist="/etc/pacman.d/mirrorlist"
-    mirror_url="https://www.archlinux.org/mirrorlist/?country=${country_code}&use_mirror_status=on"
-
-    base_packages="base base-devel amd-ucode ntfs-3g"
-    swap_size="512M"
 
     host_name="archlinux"
     time_zone="America/Recife"
+    country_code="BR"
+
+    title="AIS - Archlinux Installation Script - jonatasmedeiros.com/ais.sh"
+    ext4_args="-F -m 0 -T big"
+    mirrorlist="/etc/pacman.d/mirrorlist"
+    mirror_url="https://www.archlinux.org/mirrorlist/?country=${country_code}&use_mirror_status=on"
+    base_packages="base base-devel amd-ucode ntfs-3g"
+    swap_size="512M"
     trim_rule="ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{queue/rotational}==\"0\", ATTR{queue/scheduler}=\"deadline\""
     loader_conf="default\tarch\ntimeout\t3\neditor\t0\n"
     arch_conf="title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/amd-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=PARTLABEL=${root_label} rw\n"
@@ -112,7 +113,7 @@ format_partitions()
 mount_partitions()
 {
     print_bold "Mounting partitions"
-    print_command "umount -R ${mountJ_point}"
+    print_command "umount -R ${mount_point}"
     umount -R ${mount_point}
     printf "\n"
 
@@ -127,7 +128,6 @@ mount_partitions()
     print_command "mount -v ${esp_part} ${esp_mp}"
     mount -v ${esp_part} ${esp_mp}
     printf "\n"
-    #mount -v PARTLABEL=${esp_label} ${esp_mp}
 
     print_command "mkdir -vp ${home_mp}"
     mkdir -vp ${home_mp}
@@ -173,12 +173,12 @@ config_mirrorlist()
 clean_esp()
 {
     print_bold "Cleaning ESP"
-    print_command "rm -v /mnt/boot/vmlinuz-linux"
-    rm -v /mnt/boot/vmlinuz-linux
+    print_command "rm -v ${esp_mp}/vmlinuz-linux"
+    rm -v ${esp_mp}/vmlinuz-linux
     printf "\n"
 
-    print_command "rm -v /mnt/boot/*.img"
-    rm -v /mnt/boot/*.img
+    print_command "rm -v ${esp_mp}/*.img"
+    rm -v ${esp_mp}/*.img
     wait_key
 }
 
@@ -319,18 +319,18 @@ config_bootloader()
     arch_chroot "bootctl install"
     printf "\n"
 
-    print_command "printf \"${loader_conf}\" > ${mount_point}/boot/loader/loader.conf"
-    printf "${loader_conf}" > ${mount_point}/boot/loader/loader.conf 
+    print_command "printf \"${loader_conf}\" > ${esp_mp}/loader/loader.conf"
+    printf "${loader_conf}" > ${esp_mp}/loader/loader.conf 
 
-    print_command "cat ${mount_point}/boot/loader/loader.conf"
-    cat ${mount_point}/boot/loader/loader.conf
+    print_command "cat ${esp_mp}/loader/loader.conf"
+    cat ${esp_mp}/loader/loader.conf
     printf "\n"
 
-    print_command "printf \"${arch_conf}\" > ${mount_point}/boot/loader/entries/arch.conf"
-    printf "${arch_conf}" > ${mount_point}/boot/loader/entries/arch.conf
+    print_command "printf \"${arch_conf}\" > ${esp_mp}/loader/entries/arch.conf"
+    printf "${arch_conf}" > ${esp_mp}/loader/entries/arch.conf
 
-    print_command "cat ${mount_point}/boot/loader/entries/arch.conf"
-    cat ${mount_point}/boot/loader/entries/arch.conf
+    print_command "cat ${esp_mp}/loader/entries/arch.conf"
+    cat ${esp_mp}/loader/entries/arch.conf
     wait_key
 }
 
@@ -361,4 +361,5 @@ setup()
 set_defaults
 setup
 
-# vim: fdm=syntax 
+# vim: fdm=syntax
+#let g:sh_fold_enabled=1

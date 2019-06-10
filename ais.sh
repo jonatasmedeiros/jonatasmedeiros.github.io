@@ -1,502 +1,371 @@
 #!/bin/sh
 
-# Arch Install Script
-# by Jonatas Medeiros
-# License: GNU GPLv3
-
-# array funcs {{{
-array()
+set_defaults()
 {
-    for i
-    do
-        echo "$i"
-    done
+    # Terminal font 
+    Bold=$(tput bold)
+    Reset=$(tput sgr0)
+    Cyan=$(tput setaf 6)
+
+    root_label="arch"
+    esp_label="ESP"
+    home_label="home"
+
+    mount_point="/mnt"
+    esp_mp="${mount_point}/boot"
+    home_mp="${mount_point}/home"
+    win_mp="${mount_point}/mnt/win"
+
+    esp_part="/dev/sda2"
+    win_part="/dev/sda4"
+
+    host_name="archlinux"
+    time_zone="America/Recife"
+    country_code="BR"
+
+    title="AIS - Archlinux Installation Script - jonatasmedeiros.com/ais.sh"
+    ext4_args="-F -m 0 -T big"
+    mirrorlist="/etc/pacman.d/mirrorlist"
+    mirror_url="https://www.archlinux.org/mirrorlist/?country=${country_code}&use_mirror_status=on"
+    base_packages="base base-devel amd-ucode ntfs-3g"
+    swap_size="512M"
+    trim_rule="ACTION==\"add|change\", KERNEL==\"sd[a-z]\", ATTR{queue/rotational}==\"0\", ATTR{queue/scheduler}=\"deadline\""
+    loader_conf="default\tarch\ntimeout\t3\neditor\t0\n"
+    arch_conf="title\tArch Linux\nlinux\t/vmlinuz-linux\ninitrd\t/amd-ucode.img\ninitrd\t/initramfs-linux.img\noptions\troot=PARTLABEL=${root_label} rw\n"
 }
 
-array_len()
-{
-    wc -l
-}
-
-array_nth()
-{
-    [ "$1" -ge 0 ] && sed -n $(($1 + 1))p
-}
-
-array_change() #{{{
-{
-    _cnt=-1
-    echo "$1" | while IFS= read element
-    do
-        _cnt=$((_cnt + 1))
-        [ $_cnt -eq $2 ] && echo "$3" || echo "$element"
-    done
-} #}}}
-
-array_print_indexed() #{{{
-{
-    _cnt=0
-    echo "$1" | while IFS= read element
-    do
-        _cnt=$((_cnt + 1))
-        echo "${_cnt}) $element"
-    done
-} #}}}
-#}}}
-
-# GLOBAL VARIABLES {{{
-EDITOR="vim"
-
-keymap_list=$(array 'br-abnt2' 'us')
-# coutries_code {{{
-countries_code=$(array "AU" "AT" "BY" "BE" "BR" "BG" "CA" "CL" "CN" "CO" "CZ" "DK" "EE" "FI" "FR" "DE" "GR" "HK" "HU" "ID" "IN" "IR" "IE" "IL" "IT" "JP" "KZ" "KR" "LV" "LU" "MK" "NL" "NC" "NZ" "NO" "PL" "PT" "RO" "RU" "RS" "SG" "SK" "ZA" "ES" "LK" "SE" "CH" "TW" "TR" "UA" "GB" "US" "UZ" "VN")
-#}}}
-# countries_name {{{
-countries_name=$(array "Australia" "Austria" "Belarus" "Belgium" "Brazil" "Bulgaria" "Canada" "Chile" "China" "Colombia" "Czech Republic" "Denmark" "Estonia" "Finland" "France" "Germany" "Greece" "Hong Kong" "Hungary" "Indonesia" "India" "Iran" "Ireland" "Israel" "Italy" "Japan" "Kazakhstan" "Korea" "Latvia" "Luxembourg" "Macedonia" "Netherlands" "New Caledonia" "New Zealand" "Norway" "Poland" "Portugal" "Romania" "Russia" "Serbia" "Singapore" "Slovakia" "South Africa" "Spain" "Sri Lanka" "Sweden" "Switzerland" "Taiwan" "Turkey" "Ukraine" "United Kingdom" "United States" "Uzbekistan" "Viet Nam")
-#}}}
-
-# COLORS {{{
-Bold=$(tput bold)
-Underline=$(tput sgr 0 1)
-Reset=$(tput sgr0)
-# Regular Colors
-Red=$(tput setaf 1)
-Green=$(tput setaf 2)
-Yellow=$(tput setaf 3)
-Blue=$(tput setaf 4)
-Purple=$(tput setaf 5)
-Cyan=$(tput setaf 6)
-White=$(tput setaf 7)
-# Bold
-BRed=${Bold}${Red}
-BGreen=${Bold}${Green}
-BYellow=${Bold}${Yellow}
-BBlue=${Bold}${Blue}
-BPurple=${Bold}${Purple}
-BCyan=${Bold}${Cyan}
-BWhite=${Bold}${White}
-#}}}
-
-# DESKTOP ENVIRONMENT{{{
-CINNAMON=0
-GNOME=0
-KDE=0
-#}}}
-
-# MOUNTPOINTS {{{
-EFI_MOUNTPOINT="/boot"
-ROOT_MOUNTPOINT="/dev/sda1"
-BOOT_MOUNTPOINT="/dev/sda"
-MOUNTPOINT="/mnt"
-#}}}
-
-prompt1="Enter your option: "
-checklist=$(array '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0' '0')
-XPINGS=0 # CONNECTION CHECK
-AUTOMATIC_MODE=0
-TRIM=0
-SPIN="/-\|" #SPINNER POSITION
-ARCHI=`uname -m` # ARCHITECTURE
-AUR=`echo "(${BPurple}aur${Reset})"`
-EXTERNAL=`echo "(${BYellow}external${Reset})"`
-AUI_DIR=`pwd` #CURRENT DIRECTORY
-# LOGGING {{{
-([ "$1" = "-v" ] || [ "$1" = "--verbose" ]) && VERBOSE_MODE=1 || VERBOSE_MODE=0 # VERBOSE MODE
-LOG="${AUI_DIR}/${0}.log" # LOG FILE
-[ -f $LOG ] && rm -f $LOG
-PKG=""
-PKG_FAIL="${AUI_DIR}/${0}_fail_install.log"
-[ -f $PKG_FAIL ] && rm -f $PKG_FAIL
-#}}}
-#}}}
-
-# UI functions {{{
 print_line()
 {
     printf "%$(tput cols)s\n" | tr ' ' '-'
+}
+
+print_bold()
+{
+    printf "${Bold}:: $1${Reset}\n\n"
 }
 
 print_title()
 {
     clear
     print_line
-    echo "# ${Bold}$1${Reset}"
+    printf "  ${Bold}$1${Reset}\n"
     print_line
-    echo
+    printf "\n"
 }
 
-print_header()
+print_command()
 {
-    T_COLS=`tput cols`
-    echo "${Bold}$1${Reset}" | fold -sw $(( $T_COLS - 18 )) | sed 's/^/\t/'
-    echo
-}
-
-print_bold()
-{
-    echo "${Bold}$1${Reset}"
-    echo
-}
-
-print_info()
-{
-    echo "${BBlue}$1${Reset}"
-    echo
-}
-
-print_warning()
-{
-    T_COLS=`tput cols`
-    echo "${BYellow}$1${Reset}" | fold -sw $(( $T_COLS - 1 ))
-    echo
-}
-
-print_danger()
-{
-    T_COLS=`tput cols`
-    echo "${BRed}$1${Reset}" | fold -sw $(( $T_COLS - 1 ))
-    echo
-}
-
-checkbox()
-{
-    #display [X] or [ ]
-    [ "$1" = "1" ] && echo "${BBlue}[${Reset}${Bold}X${BBlue}]${Reset}" || echo "${BBlue}[ ${BBlue}]${Reset}";
-}
-
-mainmenu_item()
-{
-    if [ "$1" = "1" -a "$3" != "" ]; then
-        state="${BGreen}[${Reset}$3${BGreen}]${Reset}"
-    fi
-    echo "$(checkbox "$1") ${Bold}$2${Reset} ${state}"
+    printf "${Bold}\$${Reset} ${Cyan}${1}${Reset}\n\n"
 }
 
 read_key()
 {
     stty_old=$(stty -g)
-    if [ $1 -eq 0 ]; then
-        stty raw -echo min 1 time 0
-    else
-        stty raw -echo min 0 time $1
-    fi
+    stty raw -echo min 1 time 0
     printf '%s' $(dd bs=1 count=1 2>/dev/null)
     stty $stty_old
 }
 
-pause_function()
+wait_key()
 {
+    sleep 1
+    printf "\n"
     print_line
-    if [ $AUTOMATIC_MODE -eq 0 ]; then
-        printf "Press any key to continue..."
-        continue_key=$(read_key 0)
+    if [ "$1" = "" ]; then
+        printf "Press any key to continue (q to quit)..."
     else
-        printf "Press any key to continue (or wait 3s)..."
-        continue_key=$(read_key 30)
+        printf "$1"
     fi
-    echo
-    echo
+    continue_key=$(read_key)
+    if [ "$continue_key" = "q" ]; then
+        printf "\nExiting AIS...\n"
+        umount -R ${mount_point}
+        exit 1
+    fi
+    print_title "$title"
 }
 
-invalid_option()
+arch_chroot()
 {
-    print_warning "Invalid option. Try another one."
-    pause_function
+    arch-chroot ${mount_point} sh -c "${1}"
 }
 
-check_for_valid_input()
+sync_time()
 {
-    case $1 in
-        *[!0-9]*|'')
-            return 1
-            ;;
-        *)
-            return 0
-            ;;
-    esac
+    print_bold "Syncing time"
+    print_command "timedatectl set-ntp true"
+    timedatectl set-ntp true
+    wait_key
 }
-#}}}
 
-check_connection() #{{{
+format_partitions()
 {
-    while true # will exit when: ping is successfull, or user chooses option 3(Skip), or ping fails 3 times
+    print_bold "Formating partitions"
+    print_command "mkfs.ext4 ${ext4_args} -L ${root_label} /dev/disk/by-partlabel/${root_label}"
+    mkfs.ext4 ${ext4_args} -L ${root_label} /dev/disk/by-partlabel/${root_label}
+    printf "\n"
+
+    print_command "mkfs.ext4 ${ext4_args} -L ${home_label} /dev/disk/by-partlabel/${home_label}"
+    mkfs.ext4 ${ext4_args} -L ${home_label} /dev/disk/by-partlabel/${home_label}
+    wait_key
+}
+
+mount_partitions()
+{
+    print_bold "Mounting partitions"
+    print_command "umount -R ${mount_point}"
+    umount -R ${mount_point}
+    printf "\n"
+
+    print_command "mount -v PARTLABEL=${root_label} ${mount_point}"
+    mount -v PARTLABEL=${root_label} ${mount_point}
+    printf "\n"
+
+    print_command "mkdir -vp ${esp_mp}"
+    mkdir -vp ${esp_mp}
+    printf "\n"
+
+    print_command "mount -v ${esp_part} ${esp_mp}"
+    mount -v ${esp_part} ${esp_mp}
+    printf "\n"
+
+    print_command "mkdir -vp ${home_mp}"
+    mkdir -vp ${home_mp}
+    printf "\n"
+
+    print_command "mount -v PARTLABEL=${home_label} ${home_mp}"
+    mount -v PARTLABEL=${home_label} ${home_mp}
+    printf "\n"
+
+    print_command "mkdir -vp ${win_mp}"
+    mkdir -vp ${win_mp}
+    printf "\n"
+
+    print_command "mount -v ${win_part} ${win_mp}"
+    mount -v ${win_part} ${win_mp}
+    wait_key
+}
+
+config_mirrorlist()
+{
+    print_bold "Config mirrorlist"
+    print_command "pacman -Syy"
+    pacman -Syy
+    printf "\n"
+
+    print_command "pacman --noconfirm --needed -S pacman-contrib"
+    pacman --noconfirm --needed -S pacman-contrib
+    printf "\n"
+
+    print_command "cp -v ${mirrorlist} ${mirrorlist}.backup"
+    cp -v ${mirrorlist} ${mirrorlist}.backup
+    printf "\n"
+
+    print_command "curl \"${mirror_url}\" | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}"
+    curl ${mirror_url} | sed -e 's/^#Server/Server/' -e '/^#/d' | rankmirrors -n 5 - > ${mirrorlist}
+    printf "\n"
+
+    print_command "cat ${mirrorlist}"
+    cat ${mirrorlist}
+    wait_key
+}
+
+clean_esp()
+{
+    print_bold "Cleaning ESP"
+    print_command "rm -v ${esp_mp}/vmlinuz-linux"
+    rm -v ${esp_mp}/vmlinuz-linux
+    printf "\n"
+
+    print_command "rm -v ${esp_mp}/*.img"
+    rm -v ${esp_mp}/*.img
+    wait_key
+}
+
+install_base()
+{
+    print_bold "Installing base system"
+    print_command "sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf"
+    sed -i -e 's/^#Color/Color/;s/^#TotalDownload/TotalDownload/' /etc/pacman.conf
+
+    print_command "pacstrap ${mount_point} ${base_packages}"
+    pacstrap ${mount_point} ${base_packages}
+    wait_key
+}
+
+create_swap()
+{
+    print_bold "Creating swap file"
+    print_command "(chroot) fallocate -l ${swap_size} /swapfile"
+    arch_chroot "fallocate -l ${swap_size} /swapfile"
+    printf "\n"
+
+    print_command "(chroot) chmod 600 /swapfile"
+    arch_chroot "chmod 600 /swapfile"
+    printf "\n"
+
+    print_command "(chroot) mkswap /swapfile"
+    arch_chroot "mkswap /swapfile"
+    printf "\n"
+
+    print_command "(chroot) swapon /swapfile"
+    arch_chroot "swapon /swapfile"
+    wait_key
+}
+
+generate_fstab()
+{
+    print_bold "Generate fstab"
+    print_command "genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab"
+    genfstab -t PARTUUID -p ${mount_point} > ${mount_point}/etc/fstab
+    printf "\n"
+
+    # /mnt/swapfile -> /swapfile
+    print_command "sed -i \"s/\\${mount_point}//\" ${mount_point}/etc/fstab"
+    sed -i "s/\\${mount_point}//" ${mount_point}/etc/fstab
+
+    print_command "cat ${mount_point}/etc/fstab"
+    cat ${mount_point}/etc/fstab
+    wait_key
+}
+
+set_hostname()
+{
+    print_bold "Setting hostname"
+    print_command "echo $host_name > ${mount_point}/etc/hostname"
+    echo $host_name > ${mount_point}/etc/hostname
+
+    print_command "cat ${mount_point}/etc/hostname"
+    cat ${mount_point}/etc/hostname
+    wait_key
+}
+
+set_timezone()
+{
+    print_bold "Setting time zone"
+    print_command "(chroot) ln -svf /usr/share/zoneinfo/${time_zone} /etc/localtime"
+    arch_chroot "ln -svf /usr/share/zoneinfo/${time_zone} /etc/localtime"
+    wait_key
+}
+
+set_clock()
+{
+    print_bold "Setting system clock"
+    print_command "(chroot) hwclock -wu"
+    arch_chroot "hwclock -wu"
+    wait_key
+}
+
+set_locale()
+{
+    print_bold "Setting locale"
+    print_command "sed -i 's/^#en_US/en_US/' ${mount_point}/etc/locale.gen"
+    sed -i 's/^#en_US/en_US/' ${mount_point}/etc/locale.gen
+
+    print_command "echo \"LANG=en_US.UTF-8\" > ${mount_point}/etc/locale.conf"
+    echo "LANG=en_US.UTF-8" > ${mount_point}/etc/locale.conf
+
+    print_command "cat ${mount_point}/etc/locale.conf"
+    cat ${mount_point}/etc/locale.conf
+    printf "\n"
+
+    print_command "(chroot) locale-gen"
+    arch_chroot "locale-gen"
+    wait_key
+}
+
+set_trimming()
+{
+    print_bold "Setting trimming"
+    print_command "(chroot) systemctl enable fstrim.timer"
+    arch_chroot "systemctl enable fstrim.timer"
+    printf "\n"
+
+    print_command "printf \"${trim_rule}\" > ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
+    printf "${trim_rule}" > ${mount_point}/etc/udev/rules.d/60-schedulers.rules
+
+    print_command "cat ${mount_point}/etc/udev/rules.d/60-schedulers.rules"
+    cat ${mount_point}/etc/udev/rules.d/60-schedulers.rules
+    wait_key
+}
+
+copy_pacmanconf()
+{
+    print_bold "Copying pacman.conf"
+    print_command "cp -v /etc/pacman.conf ${mount_point}/etc/pacman.conf"
+    cp -v /etc/pacman.conf ${mount_point}/etc/pacman.conf
+    wait_key
+}
+
+set_root_pass()
+{
+    print_bold "Setting root password"
+    while true # will exit after passwd return 0 (success)
     do
-        XPINGS=$(($XPINGS + 1))
-        WIRED_DEV=`ip link | grep "ens\|eno\|enp" | awk '{print $2}'| sed 's/://' | sed '1!d'`
-        WIRELESS_DEV=`ip link | grep wlp | awk '{print $2}'| sed 's/://' | sed '1!d'`
-
-        if ! ping -q -w 1 -c 1 `ip r | grep default | awk 'NR==1 {print $3}'`; then
-            echo
-            connection_opts=$(array 'Wired Automatic' 'Wireless' 'Skip')
-            while true # will exit when: user inputs valid option
-            do
-                print_warning "ERROR! Connection not Found."
-                print_header ":: Network Setup ::"
-                array_print_indexed "$connection_opts"
-                echo
-                printf "$prompt1"
-                read choice
-                echo
-                case "$choice" in
-                    1)
-                        systemctl start dhcpcd@${WIRED_DEV}.service
-                        break
-                        ;;
-                    2)
-                        wifi-menu ${WIRELESS_DEV}
-                        break
-                        ;;
-                    3)
-                        break
-                        ;;
-                    *)
-                        invalid_option
-                        ;;
-                esac
-            done
-            if [ $XPINGS -gt 2 ]; then
-                echo
-                print_warning "Can't establish connection. exiting..."
-                exit 1
-            fi
-            [ $choice -eq 3 ] && break
-        else
-            echo
-            print_info "Connected!"
+        print_command "(chroot) passwd"
+        arch_chroot "passwd"
+        if [ $? -eq 0 ]; then
             break
         fi
+        wait_key "Press any key to retry (q to quit)..."
     done
-} #}}}
-
-check_trim() #{{{
-{
-    if [ -n "$(hdparm -I /dev/sda | grep TRIM)" ]; then
-        TRIM=1
-        echo
-        print_info "Trimming supported!"
-    else
-        echo
-        print_info "Trimming not supported!"
-    fi
-} #}}}
-
-select_keymap() #{{{
-{
-    number_of_options=$(echo "$keymap_list" | array_len)
-    while true # will exit when user inputs valid option
-    do
-        print_title "KEYMAP - https://wiki.archlinux.org/index.php/KEYMAP"
-        print_header "The KEYMAP variable is specified in the /etc/rc.conf file. It defines what keymap the keyboard is in the virtual consoles. Keytable files are provided by the kbd package."
-
-        echo "List of keymaps:"
-        echo
-        array_print_indexed "$keymap_list"
-        echo
-        echo "0) Go back"
-        echo
-
-        printf "$prompt1"
-        read choice
-        
-        if check_for_valid_input "$choice"; then # input is valid
-            if [ $choice -ge 1 -a $choice -le $number_of_options ]; then
-                KEYMAP=$(echo "$keymap_list" | array_nth $((choice - 1)))
-                loadkeys "$KEYMAP"
-                echo
-                print_info "Selected: $KEYMAP"
-                pause_function
-                break
-            elif [ $choice -eq 0 ]; then
-                break
-            fi
-        fi
-        invalid_option
-    done
-} #}}}
-
-configure_mirrorlist() #{{{
-{
-    number_of_options=$(echo "$countries_name" | array_len)
-    while true # will exit when user inputs valid option
-    do
-        print_title "MIRRORLIST - https://wiki.archlinux.org/index.php/Mirrors"
-        print_header "This option is a guide to selecting and configuring your mirrors, and a listing of current available mirrors."
-
-        echo "Select your country:"
-        echo
-        array_print_indexed "$countries_name" | column
-        echo
-        echo "0) Go back"
-        echo
-
-        printf "$prompt1"
-        read choice
-        
-        if check_for_valid_input "$choice"; then # input is valid
-            if [ $choice -ge 1 -a $choice -le $number_of_options ]; then
-                country_code="$(echo "$countries_code" | array_nth $((choice - 1)))"
-                country_name="$(echo "$countries_name" | array_nth $((choice - 1)))"
-                print_info "Selected: $country_name ($country_code)"
-                pause_function
-                break
-            elif [ $choice -eq 0 ]; then
-                break
-            fi
-        fi
-        invalid_option
-    done
-
-    [ $choice -eq 0 ] && return
-
-    url="https://www.archlinux.org/mirrorlist/?country=${country_code}&use_mirror_status=on"
-    tmpfile=$(mktemp --suffix=-mirrorlist)
-
-    # Get latest mirror list and save to tmpfile
-    print_bold ":: Downloading latest mirror list ::"
-    curl -o ${tmpfile} ${url}
-    echo
-    sed -i 's/^#Server/Server/g' ${tmpfile}
-
-    # Backup and replace current mirrorlist file (if new file is non-zero)
-    if [ -s ${tmpfile} ]; then
-        mv /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.orig &&
-        mv ${tmpfile} /etc/pacman.d/mirrorlist &&
-        print_info "Mirrorlist updated."
-    else
-        print_warning "Unable to update! Could not download list."
-    fi
-    
-    # better repo should go first
-    print_bold ":: Downloading rankmirrors package ::"
-    pacman --noconfirm --needed -S pacman-contrib
-    echo
-    cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.tmp
-    print_bold ":: Ranking mirrors ::"
-    rankmirrors /etc/pacman.d/mirrorlist.tmp > /etc/pacman.d/mirrorlist
-    rm /etc/pacman.d/mirrorlist.tmp
-    # allow global read access (required for non-root yaourt execution)
-    chmod +r /etc/pacman.d/mirrorlist
-    echo
-    print_bold "Mirror list:"
-    cat /etc/pacman.d/mirrorlist
-    echo
-    pause_function
+    wait_key
 }
-#}}}
 
-finish() #{{{
+config_bootloader()
 {
-    print_title "INSTALL COMPLETED"
-    #COPY AUI TO ROOT FOLDER IN THE NEW SYSTEM
-    echo
-    print_warning "A copy of the AUI will be placed in /root directory of your new system"
-    #cp -R `pwd` ${MOUNTPOINT}/root
-    #read_input_text "Reboot system"
-    #if [[ $OPTION == y ]]; then
-        #umount_partitions
-        #reboot
-    #fi
-    exit 0
-} #}}}
+    print_bold "Configuring bootloader"
+    print_command "(chroot) bootctl install"
+    arch_chroot "bootctl install"
+    printf "\n"
 
-# inital checks {{{
-print_title "Arch Install Scripts - by Jonatas Medeiros"
-print_header "The AIS are a custom set of shell scripts that provide a tailored Arch installation."
-pause_function
-print_bold ":: Checking connection ::"
-check_connection
-print_bold ":: Checking disk ::"
-check_trim
-print_bold ":: Updating repositories ::"
-pacman -Sy
-echo
-pause_function
-#}}}
+    print_command "printf \"${loader_conf}\" > ${esp_mp}/loader/loader.conf"
+    printf "${loader_conf}" > ${esp_mp}/loader/loader.conf 
 
-# main loop {{{
-while true
-do
-    print_title "ARCHLINUX INSTALL SCRIPT- https://github.com/jontasmedeiros/ais"
-    echo " 1) $(mainmenu_item "$(echo "$checklist" | array_nth 0)"  "Select Keymap"            "${KEYMAP}" )"
-    echo " 2) $(mainmenu_item "$(echo "$checklist" | array_nth 1)"  "Configure Mirrorlist"     "${country_name} (${country_code})" )"
-    echo " 4) $(mainmenu_item "$(echo "$checklist" | array_nth 3)"  "Partition Scheme"         "${partition_layout}: ${partition}(${filesystem}) swap(${swap_type})" )"
-    echo " 5) $(mainmenu_item "$(echo "$checklist" | array_nth 4)"  "Install Base System")"
-    echo " 6) $(mainmenu_item "$(echo "$checklist" | array_nth 5)"  "Configure Fstab"          "${fstab}" )"
-    echo " 7) $(mainmenu_item "$(echo "$checklist" | array_nth 6)"  "Configure Hostname"       "${host_name}" )"
-    echo " 8) $(mainmenu_item "$(echo "$checklist" | array_nth 7)"  "Configure Timezone"       "${ZONE}/${SUBZONE}" )"
-    echo " 9) $(mainmenu_item "$(echo "$checklist" | array_nth 8)"  "Configure Hardware Clock" "${hwclock}" )"
-    echo "10) $(mainmenu_item "$(echo "$checklist" | array_nth 9)" "Configure Locale"         "${LOCALE}" )"
-    echo "11) $(mainmenu_item "$(echo "$checklist" | array_nth 10)" "Configure Mkinitcpio")"
-    echo "12) $(mainmenu_item "$(echo "$checklist" | array_nth 11)" "Install Bootloader"       "${bootloader}" )"
-    echo "13) $(mainmenu_item "$(echo "$checklist" | array_nth 12)" "Root Password")"
-    echo ""
-    echo " d) Done"
-    echo ""
+    print_command "cat ${esp_mp}/loader/loader.conf"
+    cat ${esp_mp}/loader/loader.conf
+    printf "\n"
 
-    printf "$prompt1"
-    read OPT
-    case "$OPT" in
-        1)
-            select_keymap
-            [ $choice -ne 0 ] && checklist=$(array_change "$checklist" 0 "1")
-            ;;
-        2)
-            configure_mirrorlist
-            [ $choice -ne 0 ] && checklist=$(array_change "$checklist" 1 "1")
-            ;;
-        3)
-            checklist=$(array_change "$checklist" 2 "1")
-            ;;
-        4)
-#        umount_partitions
-#        create_partition_scheme
-#        format_partitions
-            checklist=$(array_change "$checklist" 3 "1")
-            ;;
-        5)
-#        install_base_system
-#        configure_keymap
-            checklist=$(array_change "$checklist" 4 "1")
-            ;;
-        6)
-#        configure_fstab
-            checklist=$(array_change "$checklist" 5 "1")
-            ;;
-        7)
-#        configure_hostname
-            checklist=$(array_change "$checklist" 6 "1")
-            ;;
-        8)
-#        configure_timezone
-            checklist=$(array_change "$checklist" 7 "1")
-            ;;
-        9)
-#        configure_hardwareclock
-            checklist=$(array_change "$checklist" 8 "1")
-            ;;
-        10)
-#        configure_locale
-            checklist=$(array_change "$checklist" 9 "1")
-            ;;
-        11)
-#        configure_mkinitcpio
-            checklist=$(array_change "$checklist" 10 "1")
-            ;;
-        12)
-#        install_bootloader
-#        configure_bootloader
-            checklist=$(array_change "$checklist" 11 "1")
-            ;;
-        13)
-#        root_password
-            checklist=$(array_change "$checklist" 12 "1")
-            ;;
-        "d")
-            finish
-            ;;
-        *)
-            invalid_option
-            ;;
-    esac
-done
-##}}}
+    print_command "printf \"${arch_conf}\" > ${esp_mp}/loader/entries/arch.conf"
+    printf "${arch_conf}" > ${esp_mp}/loader/entries/arch.conf
+
+    print_command "cat ${esp_mp}/loader/entries/arch.conf"
+    cat ${esp_mp}/loader/entries/arch.conf
+    wait_key
+}
+
+finish()
+{
+    umount -R ${mount_point}
+    printf "\n"
+    print_bold ":: Installation finished"
+}
+
+setup()
+{
+    print_title "$title"
+
+    sync_time
+    format_partitions
+    mount_partitions
+    config_mirrorlist
+    clean_esp
+    install_base
+    create_swap
+    generate_fstab
+    set_hostname
+    set_timezone
+    set_clock
+    set_locale
+    set_trimming
+    copy_pacmanconf
+    config_bootloader
+    set_root_pass
+    finish
+}
+
+set_defaults
+setup
+
+# vim: fdm=syntax
+#let g:sh_fold_enabled=1
